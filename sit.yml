@@ -1,0 +1,24 @@
+- name: check reachable hosts
+  hosts: all
+  gather_facts: no
+  tasks:
+    - command: ping -c1 {{ inventory_hostname }}
+      delegate_to: localhost
+      register: ping_result
+      ignore_errors: yes
+    - group_by: key=reachable
+      when: ping_result|success
+- name: your actual play
+  hosts: reachable
+  gather_facts: no
+  tasks:
+    - shell: OUR_KER="3.10.0"; CUR_KER=$(uname -r | awk -F"-" '{print $1}'); if [ $OUR_KER != $CUR_KER ]; then echo "CentOS6"; else echo "CentOS7"; fi
+      ignore_errors: true
+      register: kernel_hint
+    - set_fact:
+        string_to_echo: "{{ kernel_hint.stdout }}"
+    - shell:  if [ {{ string_to_echo }} == "CentOS6" ];then echo $(cat /etc/grub.conf | grep title | cut -d"(" -f2 | cut -d")" -f1 | head -n 1); else echo $(awk -F\' /^menuentry/{print\$2} /etc/grub2.cfg | cut -d"(" -f2 | cut -d")" -f1 | head -n 1); fi
+      register: runn_hint
+    - shell: LAST_KERNEL=$(rpm -q --last kernel | awk 'NR==1{sub(/kernel-/,""); print $1}'); echo $LAST_KERNEL
+      register: installed
+    - debug: msg="{{ inventory_hostname }} inst is {{ installed.stdout }} and grub {{ runn_hint.stdout }}"
